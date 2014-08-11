@@ -1,14 +1,26 @@
 package session
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"github.com/cuixin/goalg/queue"
 	"github.com/vmihailenco/msgpack"
+	"io"
 	"os"
 	"sync"
 	"time"
 )
+
+func NewSessionId(size int) string {
+	k := make([]byte, size)
+	if _, err := io.ReadFull(rand.Reader, k); err != nil {
+		return ""
+	} else {
+		return base64.StdEncoding.EncodeToString(k)
+	}
+}
 
 // 用户会话
 type Session struct {

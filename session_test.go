@@ -10,6 +10,19 @@ import (
 
 var s *Session
 
+func TestNewSessionId(t *testing.T) {
+	sid := NewSessionId(32)
+	if sid == "" {
+		t.Fatal("Wrong NewSessionId")
+	}
+}
+
+func BenchmarkNewSessionId(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		NewSessionId(32)
+	}
+}
+
 func TestNewSession(t *testing.T) {
 	var ok bool
 	s, ok = NewSession("1111", "2222", "192.168.1.1")
