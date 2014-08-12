@@ -189,6 +189,8 @@ func LoadFromFile(filePath string) (int, error) {
 	return l1, nil
 }
 
+var OnRecycled func(s *Session)
+
 // 立即回收
 func Recycle(timeout time.Duration) {
 	this.mu.Lock()
@@ -199,6 +201,9 @@ func Recycle(timeout time.Duration) {
 			// fmt.Println(v.Uid, "Expired")
 			delete(this.sidMaps, v.Sid)
 			delete(this.uidMaps, v.Uid)
+			if OnRecycled != nil {
+				OnRecycled(s)
+			}
 		}
 	}
 	this.mu.Unlock()
@@ -216,6 +221,9 @@ func StartRecycle(period time.Duration, timeout time.Duration) {
 					// fmt.Println(v.Uid, "Expired")
 					delete(this.sidMaps, v.Sid)
 					delete(this.uidMaps, v.Uid)
+					if OnRecycled != nil {
+						OnRecycled(s)
+					}
 				}
 			}
 			this.mu.Unlock()
