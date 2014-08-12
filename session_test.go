@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 )
 
 var s *Session
@@ -122,4 +123,18 @@ func TestSessionManLoadFromFile(t *testing.T) {
 		fmt.Println(k, v)
 	}
 	os.Remove("session.db")
+}
+
+func TestSessionRecycle(t *testing.T) {
+	StartRecycle(1*time.Second, time.Second*4)
+	time.Sleep(5 * time.Second)
+	NewSession("1", "101", "193.168.1.1")
+	if GetSessionCount() != 1 {
+		t.Fatal("error")
+	}
+	time.Sleep(5 * time.Second)
+
+	if GetSessionCount() != 0 {
+		t.Fatal("error count")
+	}
 }

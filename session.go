@@ -174,8 +174,51 @@ func LoadFromFile(filePath string) (int, error) {
 	msgpack.Unmarshal(data, &this.sidMaps, &this.uidMaps)
 	l1 := len(this.sidMaps)
 	l2 := len(this.uidMaps)
+	for _, v := range this.sidMaps {
+		v.writeLock = &sync.Mutex{}
+		v.writeQueue = queue.New()
+	}
+
+	for _, v := range this.uidMaps {
+		v.writeLock = &sync.Mutex{}
+		v.writeQueue = queue.New()
+	}
 	if l1 != l2 {
 		return -1, fmt.Errorf("Cannot equal maps", l1, l2)
 	}
 	return l1, nil
+}
+
+// 立即回收
+func Recycle(timeout time.Duration) {
+	this.mu.Lock()
+	now := time.Now()
+	for _, v := range this.sidMaps {
+		// expired
+		if now.After(v.LastPacketTime.Add(timeout)) {
+			// fmt.Println(v.Uid, "Expired")
+			delete(this.sidMaps, v.Sid)
+			delete(this.uidMaps, v.Uid)
+		}
+	}
+	this.mu.Unlock()
+}
+
+// 启动回收机制
+func StartRecycle(period time.Duration, timeout time.Duration) {
+	go func() {
+		c := time.Tick(period)
+		for now := range c {
+			this.mu.Lock()
+			for _, v := range this.sidMaps {
+				// expired
+				if now.After(v.LastPacketTime.Add(timeout)) {
+					// fmt.Println(v.Uid, "Expired")
+					delete(this.sidMaps, v.Sid)
+					delete(this.uidMaps, v.Uid)
+				}
+			}
+			this.mu.Unlock()
+		}
+	}()
 }
