@@ -202,7 +202,7 @@ func Recycle(timeout time.Duration) {
 			delete(this.sidMaps, v.Sid)
 			delete(this.uidMaps, v.Uid)
 			if OnRecycled != nil {
-				OnRecycled(s)
+				OnRecycled(v)
 			}
 		}
 	}
@@ -222,7 +222,7 @@ func StartRecycle(period time.Duration, timeout time.Duration) {
 					delete(this.sidMaps, v.Sid)
 					delete(this.uidMaps, v.Uid)
 					if OnRecycled != nil {
-						OnRecycled(s)
+						OnRecycled(v)
 					}
 				}
 			}
