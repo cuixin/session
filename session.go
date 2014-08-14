@@ -62,13 +62,13 @@ func (self *Session) RemoveQueue() []interface{} {
 var this = &sessionManager{
 	make(map[string]*Session, 16<<10), // 16384
 	make(map[string]*Session, 16<<10),
-	&sync.RWMutex{},
+	&sync.Mutex{},
 }
 
 type sessionManager struct {
 	sidMaps map[string]*Session // SessionId ----> Session
 	uidMaps map[string]*Session // Uid       ----> Session
-	mu      *sync.RWMutex
+	*sync.Mutex
 }
 
 func NewSession(sid, uid, remoteAddr string) (*Session, bool) {
@@ -83,68 +83,88 @@ func NewSession(sid, uid, remoteAddr string) (*Session, bool) {
 		writeLock:      &sync.Mutex{},
 		writeQueue:     queue.New(),
 	}
-	this.mu.Lock()
+	this.Lock()
 	if oldSession, ok := this.sidMaps[sid]; ok {
-		this.mu.Unlock()
+		this.Unlock()
 		return oldSession, false
 	}
 	if oldSession, ok := this.uidMaps[uid]; ok {
-		this.mu.Unlock()
+		this.Unlock()
 		return oldSession, false
 	}
 	this.sidMaps[sid] = s
 	this.uidMaps[uid] = s
-	this.mu.Unlock()
+	this.Unlock()
 	return s, true
 }
 
+func GetAllSessionUids() []string {
+	this.Lock()
+	sLen := len(this.uidMaps)
+	ret := make([]string, 0, sLen)
+	for uid, _ := range this.uidMaps {
+		ret = append(ret, uid)
+	}
+	this.Unlock()
+	return ret
+}
+
+func ClearSession() {
+	this.Lock()
+	this.uidMaps = nil
+	this.uidMaps = make(map[string]*Session, 16<<10)
+	this.sidMaps = nil
+	this.sidMaps = make(map[string]*Session, 16<<10)
+	this.Unlock()
+}
+
 func GetSessionBySid(sid string) *Session {
-	this.mu.RLock()
+	this.Lock()
 	ret := this.sidMaps[sid]
-	this.mu.RUnlock()
+	this.Unlock()
 	return ret
 }
 
 func GetSessionByUid(uid string) *Session {
-	this.mu.RLock()
+	this.Lock()
 	ret := this.uidMaps[uid]
-	this.mu.RUnlock()
+	this.Unlock()
 	return ret
 }
 
 func GetSessionCount() int {
-	this.mu.RLock()
+	this.Lock()
 	ret := len(this.sidMaps)
-	this.mu.RUnlock()
+	this.Unlock()
 	return ret
 }
 
 func RemoveSession(s *Session) {
-	this.mu.Lock()
+	this.Lock()
 	delete(this.sidMaps, s.Sid)
 	delete(this.uidMaps, s.Uid)
-	this.mu.Unlock()
+	this.Unlock()
 }
 
 func RemoveSessionBySid(sid string) *Session {
-	this.mu.Lock()
+	this.Lock()
 	s, ok := this.sidMaps[sid]
 	if ok {
 		delete(this.sidMaps, sid)
 		delete(this.uidMaps, s.Uid)
 	}
-	this.mu.Unlock()
+	this.Unlock()
 	return s
 }
 
 func RemoveSessionByUid(uid string) *Session {
-	this.mu.Lock()
+	this.Lock()
 	s, ok := this.uidMaps[uid]
 	if ok {
 		delete(this.sidMaps, s.Sid)
 		delete(this.uidMaps, uid)
 	}
-	this.mu.Unlock()
+	this.Unlock()
 	return s
 }
 
@@ -193,7 +213,7 @@ var OnRecycled func(s *Session)
 
 // 立即回收
 func Recycle(timeout time.Duration) {
-	this.mu.Lock()
+	this.Lock()
 	now := time.Now()
 	for _, v := range this.sidMaps {
 		// expired
@@ -206,7 +226,7 @@ func Recycle(timeout time.Duration) {
 			}
 		}
 	}
-	this.mu.Unlock()
+	this.Unlock()
 }
 
 // 启动回收机制
@@ -214,7 +234,7 @@ func StartRecycle(period time.Duration, timeout time.Duration) {
 	go func() {
 		c := time.Tick(period)
 		for now := range c {
-			this.mu.Lock()
+			this.Lock()
 			for _, v := range this.sidMaps {
 				// expired
 				if now.After(v.LastPacketTime.Add(timeout)) {
@@ -226,7 +246,7 @@ func StartRecycle(period time.Duration, timeout time.Duration) {
 					}
 				}
 			}
-			this.mu.Unlock()
+			this.Unlock()
 		}
 	}()
 }

@@ -143,6 +143,23 @@ func TestSessionManLoadFromFile(t *testing.T) {
 	os.Remove("session.db")
 }
 
+func TestGetSessionUids(t *testing.T) {
+	ClearSession()
+	if GetSessionCount() != 0 {
+		t.Fatal("Session count not 0")
+		return
+	}
+	NewSession("1", "101", "193.168.1.1")
+	NewSession("2", "102", "193.168.1.2")
+	NewSession("3", "103", "193.168.1.3")
+	NewSession("4", "104", "193.168.1.4")
+	NewSession("5", "105", "193.168.1.5")
+	uids := GetAllSessionUids()
+	fmt.Println(uids)
+	if len(uids) != 5 {
+		t.Fatal("Session count not 5")
+	}
+}
 func TestSessionRecycle(t *testing.T) {
 	StartRecycle(1*time.Second, time.Second*4)
 	time.Sleep(5 * time.Second)
