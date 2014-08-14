@@ -2,9 +2,7 @@ package session
 
 import (
 	"fmt"
-	"github.com/cuixin/goalg/queue"
 	"os"
-	"sync"
 	"testing"
 	"time"
 )
@@ -81,18 +79,30 @@ func TestRemoveSession(t *testing.T) {
 }
 
 func TestSessionQueue(t *testing.T) {
-	s := &Session{
-		Sid:        "1112",
-		Uid:        "2233",
-		writeLock:  &sync.Mutex{},
-		writeQueue: queue.New()}
-	s.PushQueue("111")
-	s.PushQueue("222")
-	s.PushQueue("333")
-	retQueue := s.RemoveQueue()
-	retQueue = append(retQueue, "444")
+	s, _ := NewSession("1", "101", "193.168.1.1")
+	s2, _ := NewSession("2", "102", "193.168.1.2")
 
-	fmt.Println(retQueue)
+	x := GetSessionBySid("1")
+	fmt.Printf("%p xxx \n", x)
+
+	if x == nil {
+		t.Fatal("Nil session")
+	}
+	x.PushQueue("111")
+	x.PushQueue("222")
+	x.PushQueue("333")
+	y := GetSessionByUid("101")
+	fmt.Printf("%p yyy \n", y)
+	if y == nil {
+		t.Fatal("Nil session")
+	}
+	ret := y.RemoveQueue()
+	if len(ret) != 3 {
+		t.Fatal("error queue count")
+	}
+	fmt.Println(ret)
+	RemoveSession(s)
+	RemoveSession(s2)
 }
 
 func TestSessionManDumpToFile(t *testing.T) {
@@ -121,6 +131,14 @@ func TestSessionManLoadFromFile(t *testing.T) {
 	fmt.Println("Uids:")
 	for k, v := range this.uidMaps {
 		fmt.Println(k, v)
+	}
+	s5 := GetSessionBySid("4")
+	s5.PushQueue("1")
+
+	s55 := GetSessionByUid("104")
+	ret := s55.RemoveQueue()
+	if len(ret) != 1 {
+		t.Fatal("error queue")
 	}
 	os.Remove("session.db")
 }

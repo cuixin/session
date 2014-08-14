@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
-	"fmt"
 	"github.com/cuixin/goalg/queue"
 	"github.com/vmihailenco/msgpack"
 	"io"
@@ -32,7 +31,7 @@ type Session struct {
 	PacketCount    int64     // 发送请求包的总数量
 	sync.Mutex
 	writeLock  *sync.Mutex  // 下行数据的锁
-	writeQueue *queue.Queue // 下行数据的队列
+	writeQueue *queue.Queue `json:"-"` // 下行数据的队列
 }
 
 func (self *Session) PushQueue(v interface{}) {
@@ -42,14 +41,18 @@ func (self *Session) PushQueue(v interface{}) {
 }
 
 func (self *Session) RemoveQueue() []interface{} {
+	var retQueue []interface{}
 	self.writeLock.Lock()
-	retQueue := make([]interface{}, 0)
-	for {
-		front := self.writeQueue.Dequeue()
-		if front == nil { // empty
-			break
+	qLen := self.writeQueue.Len()
+	if qLen > 0 {
+		retQueue = make([]interface{}, 0, qLen)
+		for {
+			front := self.writeQueue.Dequeue()
+			if front == nil {
+				break
+			}
+			retQueue = append(retQueue, front)
 		}
-		retQueue = append(retQueue, front)
 	}
 	self.writeLock.Unlock()
 	return retQueue
@@ -59,13 +62,13 @@ func (self *Session) RemoveQueue() []interface{} {
 var this = &sessionManager{
 	make(map[string]*Session, 16<<10), // 16384
 	make(map[string]*Session, 16<<10),
-	sync.RWMutex{},
+	&sync.RWMutex{},
 }
 
 type sessionManager struct {
 	sidMaps map[string]*Session // SessionId ----> Session
 	uidMaps map[string]*Session // Uid       ----> Session
-	mu      sync.RWMutex
+	mu      *sync.RWMutex
 }
 
 func NewSession(sid, uid, remoteAddr string) (*Session, bool) {
@@ -152,7 +155,7 @@ func DumpToFile(filePath string) error {
 		return err
 	}
 	defer f.Close()
-	bytes, err := msgpack.Marshal(this.sidMaps, this.uidMaps)
+	bytes, err := msgpack.Marshal(this.sidMaps)
 	bytes_len := make([]byte, 4)
 	binary.BigEndian.PutUint32(bytes_len, uint32(len(bytes)))
 	f.Write(bytes_len)
@@ -171,20 +174,17 @@ func LoadFromFile(filePath string) (int, error) {
 	f.Read(len_bytes)
 	data := make([]byte, binary.BigEndian.Uint32(len_bytes))
 	f.Read(data)
-	msgpack.Unmarshal(data, &this.sidMaps, &this.uidMaps)
+	this.sidMaps = nil
+	this.uidMaps = nil
+	this.sidMaps = make(map[string]*Session, 16<<10)
+	this.uidMaps = make(map[string]*Session, 16<<10)
+
+	msgpack.Unmarshal(data, &this.sidMaps)
 	l1 := len(this.sidMaps)
-	l2 := len(this.uidMaps)
 	for _, v := range this.sidMaps {
 		v.writeLock = &sync.Mutex{}
 		v.writeQueue = queue.New()
-	}
-
-	for _, v := range this.uidMaps {
-		v.writeLock = &sync.Mutex{}
-		v.writeQueue = queue.New()
-	}
-	if l1 != l2 {
-		return -1, fmt.Errorf("Cannot equal maps", l1, l2)
+		this.uidMaps[v.Uid] = v
 	}
 	return l1, nil
 }
