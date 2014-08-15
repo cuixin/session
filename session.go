@@ -23,15 +23,16 @@ func NewSessionId(size int) string {
 
 // 用户会话
 type Session struct {
-	Sid            string    // 用户SessionId
-	Uid            string    // 用户Uid
-	RemoteAddr     string    // 远程连接地址
-	ConnectTime    time.Time // 连接时间
-	LastPacketTime time.Time // 最后一次发包时间，判定是否玩家已经超时离线
-	PacketCount    int64     // 发送请求包的总数量
+	Sid            string       // 用户SessionId
+	Uid            string       // 用户Uid
+	RemoteAddr     string       // 远程连接地址
+	ConnectTime    time.Time    // 连接时间
+	LastPacketTime time.Time    // 最后一次发包时间，判定是否玩家已经超时离线
+	PacketCount    int64        // 发送请求包的总数量
+	writeLock      *sync.Mutex  // 下行数据的锁
+	writeQueue     *queue.Queue `json:"-"` // 下行数据的队列
+	Attachment     interface{}  `json:"-"` // 绑定的数据
 	sync.Mutex
-	writeLock  *sync.Mutex  // 下行数据的锁
-	writeQueue *queue.Queue `json:"-"` // 下行数据的队列
 }
 
 func (self *Session) PushQueue(v interface{}) {
