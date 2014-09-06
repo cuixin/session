@@ -4,8 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"github.com/cuixin/goalg/queue"
-	"github.com/vmihailenco/msgpack"
 	"io"
 	"os"
 	"sync"
@@ -176,7 +176,7 @@ func DumpToFile(filePath string) error {
 		return err
 	}
 	defer f.Close()
-	bytes, err := msgpack.Marshal(this.sidMaps)
+	bytes, err := json.Marshal(this.sidMaps)
 	bytes_len := make([]byte, 4)
 	binary.BigEndian.PutUint32(bytes_len, uint32(len(bytes)))
 	f.Write(bytes_len)
@@ -200,7 +200,7 @@ func LoadFromFile(filePath string) (int, error) {
 	this.sidMaps = make(map[string]*Session, 16<<10)
 	this.uidMaps = make(map[string]*Session, 16<<10)
 
-	msgpack.Unmarshal(data, &this.sidMaps)
+	json.Unmarshal(data, &this.sidMaps)
 	l1 := len(this.sidMaps)
 	for _, v := range this.sidMaps {
 		v.writeLock = &sync.Mutex{}

@@ -1,6 +1,7 @@
 package session
 
 import (
+	"code.google.com/p/go-uuid/uuid"
 	"fmt"
 	"os"
 	"testing"
@@ -160,6 +161,7 @@ func TestGetSessionUids(t *testing.T) {
 		t.Fatal("Session count not 5")
 	}
 }
+
 func TestSessionRecycle(t *testing.T) {
 	StartRecycle(1*time.Second, time.Second*4)
 	time.Sleep(5 * time.Second)
@@ -171,5 +173,16 @@ func TestSessionRecycle(t *testing.T) {
 
 	if GetSessionCount() != 0 {
 		t.Fatal("error count")
+	}
+}
+
+func BenchmarkTestSessionId(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		NewSessionId(32)
+	}
+}
+func BenchmarkTestUUID(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		uuid.New()
 	}
 }
