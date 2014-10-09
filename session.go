@@ -29,10 +29,10 @@ type Session struct {
 	ConnectTime    time.Time    // 连接时间
 	LastPacketTime time.Time    // 最后一次发包时间，判定是否玩家已经超时离线
 	PacketCount    int64        // 发送请求包的总数量
-	writeLock      *sync.Mutex  // 下行数据的锁
+	writeLock      *sync.Mutex  `json:"-"`// 下行数据的锁
 	writeQueue     *queue.Queue `json:"-"` // 下行数据的队列
 	Attachment     interface{}  `json:"-"` // 绑定的数据
-	sync.Mutex
+	sync.Mutex `json:"-"`
 }
 
 func (self *Session) PushQueue(v interface{}) {
