@@ -8,7 +8,10 @@ import (
 	"time"
 )
 
-var s *Session
+var (
+	sm *SessionManager = NewSessionManager()
+	s  *Session
+)
 
 func TestNewSessionId(t *testing.T) {
 	sid := NewSessionId(32)
@@ -25,65 +28,65 @@ func BenchmarkNewSessionId(b *testing.B) {
 
 func TestNewSession(t *testing.T) {
 	var ok bool
-	s, ok = NewSession("1111", "2222", "192.168.1.1")
+	s, ok = sm.NewSession("1111", "2222", "192.168.1.1")
 	if s == nil || !ok {
 		t.Error("Check NewSession error")
 	}
 }
 
 func TestCheckSession(t *testing.T) {
-	s = GetSessionBySid("1111")
+	s = sm.GetSessionBySid("1111")
 	if s == nil {
 		t.Error("Check GetSession error")
 	}
 }
 
 func TestCheckSessionCount(t *testing.T) {
-	c := GetSessionCount()
+	c := sm.GetSessionCount()
 	if c != 1 {
 		t.Error("Check count error")
 	}
 }
 
 func TestRemoveSessionBySid(t *testing.T) {
-	c := RemoveSessionBySid("1111")
+	c := sm.RemoveSessionBySid("1111")
 	if c == nil {
 		t.Failed()
 	}
-	if GetSessionCount() != 0 {
+	if sm.GetSessionCount() != 0 {
 		t.Error("Cannot removed session")
 	}
 }
 
 func TestRemoveSessionByUid(t *testing.T) {
-	NewSession("1111", "2222", "192.168.1.23")
+	sm.NewSession("1111", "2222", "192.168.1.23")
 
-	c := RemoveSessionByUid("2222")
+	c := sm.RemoveSessionByUid("2222")
 	if c == nil {
 		t.Failed()
 	}
-	if GetSessionCount() != 0 {
+	if sm.GetSessionCount() != 0 {
 		t.Error("Cannot removed session")
 	}
 }
 
 func TestRemoveSession(t *testing.T) {
-	x, ok := NewSession("1111", "2222", "192.168.1.23")
+	x, ok := sm.NewSession("1111", "2222", "192.168.1.23")
 	if !ok {
 		t.Error("Error on new session")
 	}
-	RemoveSession(x)
+	sm.RemoveSession(x)
 
-	if GetSessionCount() != 0 {
+	if sm.GetSessionCount() != 0 {
 		t.Error("Cannot removed session")
 	}
 }
 
 func TestSessionQueue(t *testing.T) {
-	s, _ := NewSession("1", "101", "193.168.1.1")
-	s2, _ := NewSession("2", "102", "193.168.1.2")
+	s, _ := sm.NewSession("1", "101", "193.168.1.1")
+	s2, _ := sm.NewSession("2", "102", "193.168.1.2")
 
-	x := GetSessionBySid("1")
+	x := sm.GetSessionBySid("1")
 	fmt.Printf("%p xxx \n", x)
 
 	if x == nil {
@@ -92,7 +95,7 @@ func TestSessionQueue(t *testing.T) {
 	x.PushQueue("111")
 	x.PushQueue("222")
 	x.PushQueue("333")
-	y := GetSessionByUid("101")
+	y := sm.GetSessionByUid("101")
 	fmt.Printf("%p yyy \n", y)
 	if y == nil {
 		t.Fatal("Nil session")
@@ -102,17 +105,17 @@ func TestSessionQueue(t *testing.T) {
 		t.Fatal("error queue count")
 	}
 	fmt.Println(ret)
-	RemoveSession(s)
-	RemoveSession(s2)
+	sm.RemoveSession(s)
+	sm.RemoveSession(s2)
 }
 
 func TestSessionManDumpToFile(t *testing.T) {
-	NewSession("1", "101", "193.168.1.1")
-	NewSession("2", "102", "193.168.1.2")
-	NewSession("3", "103", "193.168.1.3")
-	NewSession("4", "104", "193.168.1.4")
-	NewSession("5", "105", "193.168.1.5")
-	err := DumpToFile("session.db")
+	sm.NewSession("1", "101", "193.168.1.1")
+	sm.NewSession("2", "102", "193.168.1.2")
+	sm.NewSession("3", "103", "193.168.1.3")
+	sm.NewSession("4", "104", "193.168.1.4")
+	sm.NewSession("5", "105", "193.168.1.5")
+	err := sm.DumpToFile("session.db")
 	if err != nil {
 		t.Error(err)
 		return
@@ -120,23 +123,23 @@ func TestSessionManDumpToFile(t *testing.T) {
 }
 
 func TestSessionManLoadFromFile(t *testing.T) {
-	_, err := LoadFromFile("session.db")
+	_, err := sm.LoadFromFile("session.db")
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	fmt.Println("Sids:")
-	for k, v := range this.sidMaps {
+	for k, v := range sm.sidMaps {
 		fmt.Println(k, v)
 	}
 	fmt.Println("Uids:")
-	for k, v := range this.uidMaps {
+	for k, v := range sm.uidMaps {
 		fmt.Println(k, v)
 	}
-	s5 := GetSessionBySid("4")
+	s5 := sm.GetSessionBySid("4")
 	s5.PushQueue("1")
 
-	s55 := GetSessionByUid("104")
+	s55 := sm.GetSessionByUid("104")
 	ret := s55.RemoveQueue()
 	if len(ret) != 1 {
 		t.Fatal("error queue")
@@ -145,17 +148,17 @@ func TestSessionManLoadFromFile(t *testing.T) {
 }
 
 func TestGetSessionUids(t *testing.T) {
-	ClearSession()
-	if GetSessionCount() != 0 {
+	sm.ClearSession()
+	if sm.GetSessionCount() != 0 {
 		t.Fatal("Session count not 0")
 		return
 	}
-	NewSession("1", "101", "193.168.1.1")
-	NewSession("2", "102", "193.168.1.2")
-	NewSession("3", "103", "193.168.1.3")
-	NewSession("4", "104", "193.168.1.4")
-	NewSession("5", "105", "193.168.1.5")
-	uids := GetAllSessionUids()
+	sm.NewSession("1", "101", "193.168.1.1")
+	sm.NewSession("2", "102", "193.168.1.2")
+	sm.NewSession("3", "103", "193.168.1.3")
+	sm.NewSession("4", "104", "193.168.1.4")
+	sm.NewSession("5", "105", "193.168.1.5")
+	uids := sm.GetAllSessionUids()
 	fmt.Println(uids)
 	if len(uids) != 5 {
 		t.Fatal("Session count not 5")
@@ -163,15 +166,15 @@ func TestGetSessionUids(t *testing.T) {
 }
 
 func TestSessionRecycle(t *testing.T) {
-	StartRecycle(1*time.Second, time.Second*4)
+	sm.StartRecycle(1*time.Second, time.Second*4)
 	time.Sleep(5 * time.Second)
-	NewSession("1", "101", "193.168.1.1")
-	if GetSessionCount() != 1 {
+	sm.NewSession("1", "101", "193.168.1.1")
+	if sm.GetSessionCount() != 1 {
 		t.Fatal("error")
 	}
 	time.Sleep(5 * time.Second)
 
-	if GetSessionCount() != 0 {
+	if sm.GetSessionCount() != 0 {
 		t.Fatal("error count")
 	}
 }
@@ -181,6 +184,7 @@ func BenchmarkTestSessionId(b *testing.B) {
 		NewSessionId(32)
 	}
 }
+
 func BenchmarkTestUUID(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		uuid.New()

@@ -29,10 +29,10 @@ type Session struct {
 	ConnectTime    time.Time    // 连接时间
 	LastPacketTime time.Time    // 最后一次发包时间，判定是否玩家已经超时离线
 	PacketCount    int64        // 发送请求包的总数量
-	writeLock      *sync.Mutex  `json:"-"`// 下行数据的锁
+	writeLock      *sync.Mutex  `json:"-"` // 下行数据的锁
 	writeQueue     *queue.Queue `json:"-"` // 下行数据的队列
 	Attachment     interface{}  `json:"-"` // 绑定的数据
-	sync.Mutex `json:"-"`
+	sync.Mutex     `json:"-"`
 }
 
 func (self *Session) PushQueue(v interface{}) {
@@ -60,19 +60,23 @@ func (self *Session) RemoveQueue() []interface{} {
 }
 
 // 实现一个双向唯一Sid<->Uid
-var this = &sessionManager{
-	make(map[string]*Session, 16<<10), // 16384
-	make(map[string]*Session, 16<<10),
-	&sync.Mutex{},
+func NewSessionManager() *SessionManager {
+	return &SessionManager{
+		make(map[string]*Session, 16<<10), // 16384
+		make(map[string]*Session, 16<<10),
+		&sync.Mutex{},
+		nil,
+	}
 }
 
-type sessionManager struct {
+type SessionManager struct {
 	sidMaps map[string]*Session // SessionId ----> Session
 	uidMaps map[string]*Session // Uid       ----> Session
 	*sync.Mutex
+	OnRecycled func(s *Session)
 }
 
-func NewSession(sid, uid, remoteAddr string) (*Session, bool) {
+func (this *SessionManager) NewSession(sid, uid, remoteAddr string) (*Session, bool) {
 	nowTime := time.Now()
 	s := &Session{
 		Sid:            sid,
@@ -99,7 +103,7 @@ func NewSession(sid, uid, remoteAddr string) (*Session, bool) {
 	return s, true
 }
 
-func GetAllSessionUids() []string {
+func (this *SessionManager) GetAllSessionUids() []string {
 	this.Lock()
 	sLen := len(this.uidMaps)
 	ret := make([]string, 0, sLen)
@@ -110,7 +114,7 @@ func GetAllSessionUids() []string {
 	return ret
 }
 
-func ClearSession() {
+func (this *SessionManager) ClearSession() {
 	this.Lock()
 	this.uidMaps = nil
 	this.uidMaps = make(map[string]*Session, 16<<10)
@@ -119,35 +123,35 @@ func ClearSession() {
 	this.Unlock()
 }
 
-func GetSessionBySid(sid string) *Session {
+func (this *SessionManager) GetSessionBySid(sid string) *Session {
 	this.Lock()
 	ret := this.sidMaps[sid]
 	this.Unlock()
 	return ret
 }
 
-func GetSessionByUid(uid string) *Session {
+func (this *SessionManager) GetSessionByUid(uid string) *Session {
 	this.Lock()
 	ret := this.uidMaps[uid]
 	this.Unlock()
 	return ret
 }
 
-func GetSessionCount() int {
+func (this *SessionManager) GetSessionCount() int {
 	this.Lock()
 	ret := len(this.sidMaps)
 	this.Unlock()
 	return ret
 }
 
-func RemoveSession(s *Session) {
+func (this *SessionManager) RemoveSession(s *Session) {
 	this.Lock()
 	delete(this.sidMaps, s.Sid)
 	delete(this.uidMaps, s.Uid)
 	this.Unlock()
 }
 
-func RemoveSessionBySid(sid string) *Session {
+func (this *SessionManager) RemoveSessionBySid(sid string) *Session {
 	this.Lock()
 	s, ok := this.sidMaps[sid]
 	if ok {
@@ -158,7 +162,7 @@ func RemoveSessionBySid(sid string) *Session {
 	return s
 }
 
-func RemoveSessionByUid(uid string) *Session {
+func (this *SessionManager) RemoveSessionByUid(uid string) *Session {
 	this.Lock()
 	s, ok := this.uidMaps[uid]
 	if ok {
@@ -170,7 +174,7 @@ func RemoveSessionByUid(uid string) *Session {
 }
 
 // 缓存到本地文件
-func DumpToFile(filePath string) error {
+func (this *SessionManager) DumpToFile(filePath string) error {
 	f, err := os.Create(filePath)
 	if err != nil {
 		return err
@@ -184,8 +188,8 @@ func DumpToFile(filePath string) error {
 	return nil
 }
 
-// // 从本地文件读取Session
-func LoadFromFile(filePath string) (int, error) {
+//  从本地文件读取Session
+func (this *SessionManager) LoadFromFile(filePath string) (int, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return -1, err
@@ -210,10 +214,8 @@ func LoadFromFile(filePath string) (int, error) {
 	return l1, nil
 }
 
-var OnRecycled func(s *Session)
-
 // 立即回收
-func Recycle(timeout time.Duration) {
+func (this *SessionManager) Recycle(timeout time.Duration) {
 	this.Lock()
 	now := time.Now()
 	for _, v := range this.sidMaps {
@@ -222,8 +224,8 @@ func Recycle(timeout time.Duration) {
 			// fmt.Println(v.Uid, "Expired")
 			delete(this.sidMaps, v.Sid)
 			delete(this.uidMaps, v.Uid)
-			if OnRecycled != nil {
-				OnRecycled(v)
+			if this.OnRecycled != nil {
+				this.OnRecycled(v)
 			}
 		}
 	}
@@ -231,7 +233,7 @@ func Recycle(timeout time.Duration) {
 }
 
 // 启动回收机制
-func StartRecycle(period time.Duration, timeout time.Duration) {
+func (this *SessionManager) StartRecycle(period time.Duration, timeout time.Duration) {
 	go func() {
 		c := time.Tick(period)
 		for now := range c {
@@ -242,8 +244,8 @@ func StartRecycle(period time.Duration, timeout time.Duration) {
 					// fmt.Println(v.Uid, "Expired")
 					delete(this.sidMaps, v.Sid)
 					delete(this.uidMaps, v.Uid)
-					if OnRecycled != nil {
-						OnRecycled(v)
+					if this.OnRecycled != nil {
+						this.OnRecycled(v)
 					}
 				}
 			}
