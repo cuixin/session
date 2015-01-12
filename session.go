@@ -4,8 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
 	"github.com/cuixin/goalg/queue"
+	"github.com/vmihailenco/msgpack"
 	"io"
 	"os"
 	"sync"
@@ -29,10 +29,10 @@ type Session struct {
 	ConnectTime    time.Time    // 连接时间
 	LastPacketTime time.Time    // 最后一次发包时间，判定是否玩家已经超时离线
 	PacketCount    int64        // 发送请求包的总数量
-	writeLock      *sync.Mutex  `json:"-"` // 下行数据的锁
-	writeQueue     *queue.Queue `json:"-"` // 下行数据的队列
-	Attachment     interface{}  `json:"-"` // 绑定的数据
-	sync.Mutex     `json:"-"`
+	writeLock      *sync.Mutex  `msgpack:"-"` // 下行数据的锁
+	writeQueue     *queue.Queue `msgpack:"-"` // 下行数据的队列
+	Attachment     interface{}  `msgpack:"-"` // 绑定的数据
+	sync.Mutex     `msgpack:"-"`
 }
 
 func (self *Session) PushQueue(v interface{}) {
@@ -62,17 +62,16 @@ func (self *Session) RemoveQueue() []interface{} {
 // 实现一个双向唯一Sid<->Uid
 func NewSessionManager() *SessionManager {
 	return &SessionManager{
-		make(map[string]*Session, 16<<10), // 16384
-		make(map[string]*Session, 16<<10),
-		&sync.Mutex{},
-		nil,
+		sidMaps:    make(map[string]*Session, 16<<10), // 16384
+		uidMaps:    make(map[string]*Session, 16<<10),
+		OnRecycled: nil,
 	}
 }
 
 type SessionManager struct {
-	sidMaps map[string]*Session // SessionId ----> Session
-	uidMaps map[string]*Session // Uid       ----> Session
-	*sync.Mutex
+	sync.Mutex
+	sidMaps    map[string]*Session // SessionId ----> Session
+	uidMaps    map[string]*Session // Uid       ----> Session
 	OnRecycled func(s *Session)
 }
 
@@ -106,9 +105,11 @@ func (this *SessionManager) NewSession(sid, uid, remoteAddr string) (*Session, b
 func (this *SessionManager) GetAllSessionUids() []string {
 	this.Lock()
 	sLen := len(this.uidMaps)
-	ret := make([]string, 0, sLen)
+	ret := make([]string, sLen)
+	i := 0
 	for uid, _ := range this.uidMaps {
-		ret = append(ret, uid)
+		ret[i] = uid
+		i++
 	}
 	this.Unlock()
 	return ret
@@ -180,11 +181,16 @@ func (this *SessionManager) DumpToFile(filePath string) error {
 		return err
 	}
 	defer f.Close()
-	bytes, err := json.Marshal(this.sidMaps)
+
+	bytes, err := msgpack.Marshal(this.sidMaps)
+	if err != nil {
+		return err
+	}
 	bytes_len := make([]byte, 4)
 	binary.BigEndian.PutUint32(bytes_len, uint32(len(bytes)))
 	f.Write(bytes_len)
 	f.Write(bytes)
+
 	return nil
 }
 
@@ -204,7 +210,7 @@ func (this *SessionManager) LoadFromFile(filePath string) (int, error) {
 	this.sidMaps = make(map[string]*Session, 16<<10)
 	this.uidMaps = make(map[string]*Session, 16<<10)
 
-	json.Unmarshal(data, &this.sidMaps)
+	msgpack.Unmarshal(data, &this.sidMaps)
 	l1 := len(this.sidMaps)
 	for _, v := range this.sidMaps {
 		v.writeLock = &sync.Mutex{}
