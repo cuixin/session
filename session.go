@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"github.com/cuixin/goalg/queue"
-	"github.com/vmihailenco/msgpack"
+	msgpack "gopkg.in/vmihailenco/msgpack.v2"
 	"io"
 	"os"
 	"sync"
