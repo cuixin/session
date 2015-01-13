@@ -35,6 +35,10 @@ type Session struct {
 	sync.Mutex     `msgpack:"-"`
 }
 
+func (self *Session) SetLastPackTime() {
+	self.LastPacketTime = time.Now()
+}
+
 func (self *Session) PushQueue(v interface{}) {
 	self.writeLock.Lock()
 	self.writeQueue.Enqueue(v)
