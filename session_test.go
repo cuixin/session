@@ -1,7 +1,6 @@
 package session
 
 import (
-	"code.google.com/p/go-uuid/uuid"
 	"fmt"
 	"os"
 	"testing"
@@ -92,19 +91,29 @@ func TestSessionQueue(t *testing.T) {
 	if x == nil {
 		t.Fatal("Nil session")
 	}
-	x.PushQueue("111")
-	x.PushQueue("222")
-	x.PushQueue("333")
-	y := sm.GetSessionByUid("101")
-	fmt.Printf("%p yyy \n", y)
-	if y == nil {
-		t.Fatal("Nil session")
-	}
-	ret := y.RemoveQueue()
-	if len(ret) != 3 {
-		t.Fatal("error queue count")
-	}
-	fmt.Println(ret)
+
+	go func() {
+		for v := range x.MsgQueue {
+			handler := sm.GetHandler(v.Id)
+			if handler == nil {
+				t.Error("Cannot Found Handler", v.Id)
+			}
+			handler(x, v)
+			if v.IsDown != nil {
+				v.IsDown <- struct{}{}
+			}
+		}
+	}()
+
+	sm.RegHandler("/hello",
+		func(s *Session, v *Message) {
+			s.DownQueue.In("Called Hello Ok")
+		})
+	isDone := make(chan struct{}, 1)
+	x.MsgQueue <- &Message{"/hello", "hello message", isDone}
+	<-isDone
+
+	fmt.Println(x.DownQueue.Clean())
 	sm.RemoveSession(s)
 	sm.RemoveSession(s2)
 }
@@ -137,13 +146,14 @@ func TestSessionManLoadFromFile(t *testing.T) {
 		fmt.Println(k, v)
 	}
 	s5 := sm.GetSessionBySid("4")
-	s5.PushQueue("1")
-
-	s55 := sm.GetSessionByUid("104")
-	ret := s55.RemoveQueue()
-	if len(ret) != 1 {
-		t.Fatal("error queue")
+	if s5 == nil {
+		t.Fatal("Error find session")
 	}
+	s55 := sm.GetSessionByUid("104")
+	if s55 == nil {
+		t.Fatal("Error find session")
+	}
+
 	os.Remove("session.db")
 }
 
@@ -182,11 +192,5 @@ func TestSessionRecycle(t *testing.T) {
 func BenchmarkTestSessionId(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		NewSessionId(32)
-	}
-}
-
-func BenchmarkTestUUID(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		uuid.New()
 	}
 }

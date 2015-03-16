@@ -4,12 +4,12 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
-	"github.com/cuixin/goalg/queue"
-	msgpack "gopkg.in/vmihailenco/msgpack.v2"
 	"io"
 	"os"
 	"sync"
 	"time"
+
+	msgpack "gopkg.in/vmihailenco/msgpack.v2"
 )
 
 func NewSessionId(size int) string {
@@ -23,63 +23,39 @@ func NewSessionId(size int) string {
 
 // 用户会话
 type Session struct {
-	Sid            string       // 用户SessionId
-	Uid            string       // 用户Uid
-	RemoteAddr     string       // 远程连接地址
-	ConnectTime    time.Time    // 连接时间
-	LastPacketTime time.Time    // 最后一次发包时间，判定是否玩家已经超时离线
-	PacketCount    int64        // 发送请求包的总数量
-	writeLock      *sync.Mutex  `msgpack:"-"` // 下行数据的锁
-	writeQueue     *queue.Queue `msgpack:"-"` // 下行数据的队列
-	Attachment     interface{}  `msgpack:"-"` // 绑定的数据
-	sync.Mutex     `msgpack:"-"`
-}
-
-func (self *Session) SetLastPackTime() {
-	self.LastPacketTime = time.Now()
-}
-
-func (self *Session) PushQueue(v interface{}) {
-	self.writeLock.Lock()
-	self.writeQueue.Enqueue(v)
-	self.writeLock.Unlock()
-}
-
-func (self *Session) RemoveQueue() []interface{} {
-	var retQueue []interface{}
-	self.writeLock.Lock()
-	qLen := self.writeQueue.Len()
-	if qLen > 0 {
-		retQueue = make([]interface{}, 0, qLen)
-		for {
-			front := self.writeQueue.Dequeue()
-			if front == nil {
-				break
-			}
-			retQueue = append(retQueue, front)
-		}
-	}
-	self.writeLock.Unlock()
-	return retQueue
+	Sid            string        // 用户SessionId
+	Uid            string        // 用户Uid
+	RemoteAddr     string        // 远程连接地址
+	ConnectTime    time.Time     // 连接时间
+	LastPacketTime time.Time     // 最后一次发包时间，判定是否玩家已经超时离线
+	PacketCount    int64         // 发送请求包的总数量
+	Attachment     interface{}   `msgpack:"-"` // 绑定的数据
+	DownQueue      *SafeQueue    `msgpack:"-"` // 下行数据的队列
+	MsgQueue       chan *Message `msgpack:"-"` // 消息
 }
 
 // 实现一个双向唯一Sid<->Uid
 func NewSessionManager() *SessionManager {
 	return &SessionManager{
-		sidMaps:    make(map[string]*Session, 16<<10), // 16384
-		uidMaps:    make(map[string]*Session, 16<<10),
-		OnRecycled: nil,
+		sidMaps: make(map[string]*Session, 16<<10), // 16384
+		uidMaps: make(map[string]*Session, 16<<10),
 	}
+}
+
+// 消息
+type Message struct {
+	Data   interface{}   // 实际数据
+	IsDown chan struct{} // 完成通知
 }
 
 type SessionManager struct {
 	sync.Mutex
-	sidMaps    map[string]*Session // SessionId ----> Session
-	uidMaps    map[string]*Session // Uid       ----> Session
-	OnRecycled func(s *Session)
+	sidMaps map[string]*Session // SessionId ----> Session
+	uidMaps map[string]*Session // Uid       ----> Session
 }
 
-func (this *SessionManager) NewSession(sid, uid, remoteAddr string) (*Session, bool) {
+func (this *SessionManager) NewSession(uid, remoteAddr string) (*Session, bool) {
+	sid := NewSessionId(32)
 	nowTime := time.Now()
 	s := &Session{
 		Sid:            sid,
@@ -88,11 +64,20 @@ func (this *SessionManager) NewSession(sid, uid, remoteAddr string) (*Session, b
 		ConnectTime:    nowTime,
 		LastPacketTime: nowTime,
 		PacketCount:    1,
-		writeLock:      &sync.Mutex{},
-		writeQueue:     queue.New(),
+		DownQueue:      NewSafeQueue(),
+		MsgQueue:       make(chan *Message, 16),
 	}
 	this.Lock()
 	if oldSession, ok := this.sidMaps[sid]; ok {
+		sid = NewSessionId(32)
+		if oldSession2, ok2 := this.sidMaps[sid]; ok2 {
+			this.Unlock()
+			return oldSession2, false
+		} else {
+			s.Sid = sid
+			this.Unlock()
+			return s, true
+		}
 		this.Unlock()
 		return oldSession, false
 	}
@@ -117,6 +102,14 @@ func (this *SessionManager) GetAllSessionUids() []string {
 	}
 	this.Unlock()
 	return ret
+}
+
+func (this *SessionManager) AllSessionDo(call func(*Session)) {
+	for _, v := range this.sidMaps {
+		this.Lock()
+		call(v)
+		this.Unlock()
+	}
 }
 
 func (this *SessionManager) ClearSession() {
@@ -153,6 +146,7 @@ func (this *SessionManager) RemoveSession(s *Session) {
 	this.Lock()
 	delete(this.sidMaps, s.Sid)
 	delete(this.uidMaps, s.Uid)
+	close(s.MsgQueue)
 	this.Unlock()
 }
 
@@ -217,49 +211,9 @@ func (this *SessionManager) LoadFromFile(filePath string) (int, error) {
 	msgpack.Unmarshal(data, &this.sidMaps)
 	l1 := len(this.sidMaps)
 	for _, v := range this.sidMaps {
-		v.writeLock = &sync.Mutex{}
-		v.writeQueue = queue.New()
+		v.MsgQueue = make(chan *Message, 16)
+		v.DownQueue = NewSafeQueue()
 		this.uidMaps[v.Uid] = v
 	}
 	return l1, nil
-}
-
-// 立即回收
-func (this *SessionManager) Recycle(timeout time.Duration) {
-	this.Lock()
-	now := time.Now()
-	for _, v := range this.sidMaps {
-		// expired
-		if now.After(v.LastPacketTime.Add(timeout)) {
-			// fmt.Println(v.Uid, "Expired")
-			delete(this.sidMaps, v.Sid)
-			delete(this.uidMaps, v.Uid)
-			if this.OnRecycled != nil {
-				this.OnRecycled(v)
-			}
-		}
-	}
-	this.Unlock()
-}
-
-// 启动回收机制
-func (this *SessionManager) StartRecycle(period time.Duration, timeout time.Duration) {
-	go func() {
-		c := time.Tick(period)
-		for now := range c {
-			this.Lock()
-			for _, v := range this.sidMaps {
-				// expired
-				if now.After(v.LastPacketTime.Add(timeout)) {
-					// fmt.Println(v.Uid, "Expired")
-					delete(this.sidMaps, v.Sid)
-					delete(this.uidMaps, v.Uid)
-					if this.OnRecycled != nil {
-						this.OnRecycled(v)
-					}
-				}
-			}
-			this.Unlock()
-		}
-	}()
 }
