@@ -75,6 +75,8 @@ func (this *SessionManager) NewSession(uid, remoteAddr string) (*Session, bool) 
 			return oldSession2, false
 		} else {
 			s.Sid = sid
+			this.sidMaps[sid] = s
+			this.uidMaps[uid] = s
 			this.Unlock()
 			return s, true
 		}
