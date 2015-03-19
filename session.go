@@ -45,7 +45,7 @@ func NewSessionManager() *SessionManager {
 // 消息
 type Message struct {
 	Data   interface{}   // 实际数据
-	IsDown chan struct{} // 完成通知
+	IsDown chan struct{} `msgpack:"-"` // 完成通知
 }
 
 type SessionManager struct {
