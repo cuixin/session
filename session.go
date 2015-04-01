@@ -106,12 +106,17 @@ func (this *SessionManager) GetAllSessionUids() []string {
 	return ret
 }
 
-func (this *SessionManager) AllSessionDo(call func(*Session)) {
-	for _, v := range this.sidMaps {
-		this.Lock()
-		call(v)
-		this.Unlock()
+func (this *SessionManager) GetAllSessionSids() []string {
+	this.Lock()
+	sLen := len(this.sidMaps)
+	ret := make([]string, sLen)
+	i := 0
+	for sid, _ := range this.sidMaps {
+		ret[i] = sid
+		i++
 	}
+	this.Unlock()
+	return ret
 }
 
 func (this *SessionManager) ClearSession() {
