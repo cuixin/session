@@ -52,7 +52,7 @@ func (this *Session) SendMessage(msg *Message) bool {
         isSend = true
         this.msgQ <- msg
         if msg.IsDown != nil {
-            msg.IsDown <- struct{}{}
+            <-msg.IsDown
         }
     }
     this.mu.Unlock()
