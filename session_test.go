@@ -8,12 +8,12 @@ import (
 )
 
 var (
-	sm *SessionManager = NewSessionManager()
-	s  *Session
+	sm   *SessionManager = NewSessionManager(time.Second, time.Second*2)
+	uids                 = []string{"1", "2", "3", "4", "5"}
 )
 
 func TestNewSessionId(t *testing.T) {
-	sid := NewSessionId(32)
+	sid := newSessionId(sessionIdLength)
 	if sid == "" {
 		t.Fatal("Wrong NewSessionId")
 	}
@@ -21,109 +21,59 @@ func TestNewSessionId(t *testing.T) {
 
 func BenchmarkNewSessionId(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		NewSessionId(32)
+		newSessionId(sessionIdLength)
 	}
 }
 
-func TestNewSession(t *testing.T) {
-	var ok bool
-	s, ok = sm.NewSession("1111", "2222", "192.168.1.1")
+func testSessionLifecycle(uid string, t *testing.T) {
+	s, ok := sm.NewSession(uid, "192.168.1.1")
 	if s == nil || !ok {
 		t.Error("Check NewSession error")
 	}
-}
-
-func TestCheckSession(t *testing.T) {
-	s = sm.GetSessionBySid("1111")
+	s = sm.GetSessionByUid(uid)
 	if s == nil {
-		t.Error("Check GetSession error")
+		t.Error("Check GetSession by Uid error")
 	}
-}
-
-func TestCheckSessionCount(t *testing.T) {
+	s = sm.GetSessionBySid(s.Sid)
+	if s == nil {
+		t.Error("Check GetSession by Sid error")
+	}
 	c := sm.GetSessionCount()
 	if c != 1 {
 		t.Error("Check count error")
 	}
-}
-
-func TestRemoveSessionBySid(t *testing.T) {
-	c := sm.RemoveSessionBySid("1111")
-	if c == nil {
-		t.Failed()
+	sm.RemoveSessionBySid(s.Sid)
+	if sm.GetSessionCount() != 0 {
+		t.Error("Cannot removed session")
 	}
+	if sm.GetSessionBySid(s.Sid) != nil ||
+		sm.GetSessionByUid(s.Uid) != nil {
+		t.Error("Check Session is existed")
+	}
+	s, ok = sm.NewSession(uid, "192.168.1.1")
+	if s == nil || !ok {
+		t.Error("Check NewSession error")
+	}
+	c = sm.GetSessionCount()
+	if c != 1 {
+		t.Error("Check count error")
+	}
+	sm.RemoveSessionByUid(s.Uid)
 	if sm.GetSessionCount() != 0 {
 		t.Error("Cannot removed session")
 	}
 }
 
-func TestRemoveSessionByUid(t *testing.T) {
-	sm.NewSession("1111", "2222", "192.168.1.23")
-
-	c := sm.RemoveSessionByUid("2222")
-	if c == nil {
-		t.Failed()
-	}
-	if sm.GetSessionCount() != 0 {
-		t.Error("Cannot removed session")
-	}
+func TestSessionLifecycle(t *testing.T) {
+	testSessionLifecycle("1111", t)
+	testSessionLifecycle("2222", t)
+	testSessionLifecycle("3333", t)
 }
 
-func TestRemoveSession(t *testing.T) {
-	x, ok := sm.NewSession("1111", "2222", "192.168.1.23")
-	if !ok {
-		t.Error("Error on new session")
+func TestSessionsDumpToFile(t *testing.T) {
+	for _, s := range uids {
+		sm.NewSession(s, "192.168.1.1")
 	}
-	sm.RemoveSession(x)
-
-	if sm.GetSessionCount() != 0 {
-		t.Error("Cannot removed session")
-	}
-}
-
-func TestSessionQueue(t *testing.T) {
-	s, _ := sm.NewSession("1", "101", "193.168.1.1")
-	s2, _ := sm.NewSession("2", "102", "193.168.1.2")
-
-	x := sm.GetSessionBySid("1")
-	fmt.Printf("%p xxx \n", x)
-
-	if x == nil {
-		t.Fatal("Nil session")
-	}
-
-	go func() {
-		for v := range x.MsgQueue {
-			handler := sm.GetHandler(v.Id)
-			if handler == nil {
-				t.Error("Cannot Found Handler", v.Id)
-			}
-			handler(x, v)
-			if v.IsDown != nil {
-				v.IsDown <- struct{}{}
-			}
-		}
-	}()
-
-	sm.RegHandler("/hello",
-		func(s *Session, v *Message) {
-			s.DownQueue.In("Called Hello Ok")
-		})
-	isDone := make(chan struct{}, 1)
-	x.MsgQueue <- &Message{"/hello", "hello message", isDone}
-	<-isDone
-
-	fmt.Println(x.DownQueue.Clean())
-	sm.RemoveSession(s)
-	sm.RemoveSession(s2)
-}
-
-func TestSessionManDumpToFile(t *testing.T) {
-	sm.NewSession("1", "101", "193.168.1.1")
-	sm.NewSession("2", "102", "193.168.1.2")
-	sm.NewSession("3", "103", "193.168.1.3")
-	sm.NewSession("4", "104", "193.168.1.4")
-	sm.NewSession("5", "105", "193.168.1.5")
 	err := sm.DumpToFile("session.db")
 	if err != nil {
 		t.Error(err)
@@ -131,66 +81,52 @@ func TestSessionManDumpToFile(t *testing.T) {
 	}
 }
 
-func TestSessionManLoadFromFile(t *testing.T) {
+func findUid(uid string) bool {
+	for _, v := range uids {
+		if uid == v {
+			return true
+		}
+	}
+	return false
+}
+
+func TestSessionsLoadFromFile(t *testing.T) {
 	_, err := sm.LoadFromFile("session.db")
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	fmt.Println("Sids:")
-	for k, v := range sm.sidMaps {
-		fmt.Println(k, v)
+	for _, v := range sm.sidMaps {
+		if !findUid(v.Uid) {
+			t.Fatal("Error find session")
+		}
 	}
-	fmt.Println("Uids:")
-	for k, v := range sm.uidMaps {
-		fmt.Println(k, v)
+	for uid, _ := range sm.uidMaps {
+		if !findUid(uid) {
+			t.Fatal("Error find session")
+		}
 	}
-	s5 := sm.GetSessionBySid("4")
-	if s5 == nil {
-		t.Fatal("Error find session")
-	}
-	s55 := sm.GetSessionByUid("104")
-	if s55 == nil {
-		t.Fatal("Error find session")
-	}
-
 	os.Remove("session.db")
 }
 
-func TestGetSessionUids(t *testing.T) {
-	sm.ClearSession()
-	if sm.GetSessionCount() != 0 {
-		t.Fatal("Session count not 0")
-		return
-	}
-	sm.NewSession("1", "101", "193.168.1.1")
-	sm.NewSession("2", "102", "193.168.1.2")
-	sm.NewSession("3", "103", "193.168.1.3")
-	sm.NewSession("4", "104", "193.168.1.4")
-	sm.NewSession("5", "105", "193.168.1.5")
-	uids := sm.GetAllSessionUids()
-	fmt.Println(uids)
-	if len(uids) != 5 {
-		t.Fatal("Session count not 5")
-	}
-}
-
 func TestSessionRecycle(t *testing.T) {
-	sm.StartRecycle(1*time.Second, time.Second*4)
-	time.Sleep(5 * time.Second)
-	sm.NewSession("1", "101", "193.168.1.1")
-	if sm.GetSessionCount() != 1 {
+	closeFunc := func(s *Session) {
+		fmt.Println(s.Uid, "Session Recycled")
+	}
+	sm.StartRecycleRoutine(closeFunc)
+	time.Sleep(3 * time.Second)
+	if sm.GetSessionCount() != 0 {
 		t.Fatal("error")
 	}
-	time.Sleep(5 * time.Second)
-
-	if sm.GetSessionCount() != 0 {
-		t.Fatal("error count")
+	for _, s := range uids {
+		sm.NewSession(s, "192.168.1.1")
 	}
-}
-
-func BenchmarkTestSessionId(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		NewSessionId(32)
+	fmt.Println("Stop")
+	time.Sleep(time.Second)
+	sm.StopRecycleRoutine()
+	time.Sleep(time.Second)
+	sm.RecycleNow(closeFunc)
+	if sm.GetSessionCount() != 0 {
+		t.Fatal("error")
 	}
 }
