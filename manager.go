@@ -27,11 +27,9 @@ func newSessionId(size int) string {
 }
 
 // 实现一个双向唯一Sid<->Uid
-func NewSessionManager(p, t time.Duration) *SessionManager {
+func NewSessionManager() *SessionManager {
 	return &SessionManager{
 		mu:        sync.Mutex{},
-		period:    p,
-		timeout:   t,
 		closeChan: make(chan struct{}),
 		closeWait: make(chan struct{}, 1),
 		closeFlag: 0,
@@ -42,9 +40,6 @@ func NewSessionManager(p, t time.Duration) *SessionManager {
 
 type SessionManager struct {
 	mu      sync.Mutex
-	period  time.Duration
-	timeout time.Duration
-
 	closeChan chan struct{} `msgpack:"-"`
 	closeWait chan struct{} `msgpack:"-"`
 	closeFlag int32
@@ -207,17 +202,17 @@ func (this *SessionManager) LoadFromFile(filePath string) (int, error) {
 }
 
 // 开启回收Session的Goroutine
-func (this *SessionManager) StartRecycleRoutine(handle func(*Session)) {
+func (this *SessionManager) StartRecycleRoutine(period, timeout time.Duration, handle func(*Session)) {
 	if atomic.LoadInt32(&this.closeFlag) == 0 {
 		go func() {
 		lout:
 			for {
 				select {
-				case <-time.After(this.period):
+				case <-time.After(period):
 					this.mu.Lock()
 					for _, v := range this.sidMaps {
 						// expired
-						if time.Now().After(v.LastPacketTime.Add(this.timeout)) {
+						if time.Now().After(v.LastPacketTime.Add(timeout)) {
 							delete(this.sidMaps, v.Sid)
 							delete(this.uidMaps, v.Uid)
 							go handle(v)
@@ -247,13 +242,13 @@ func (this *SessionManager) StopRecycleRoutine() {
 }
 
 // 立即检查是否可以回收Session
-func (this *SessionManager) RecycleNow(handle func(*Session)) {
+func (this *SessionManager) RecycleNow(timeout time.Duration, handle func(*Session)) {
 	fmt.Println("Routine Recycle imediately")
 	this.mu.Lock()
 	now := time.Now()
 	for _, v := range this.sidMaps {
 		// expired
-		if now.After(v.LastPacketTime.Add(this.timeout)) {
+		if now.After(v.LastPacketTime.Add(timeout)) {
 			// fmt.Println(v.Uid, "Expired")
 			delete(this.sidMaps, v.Sid)
 			delete(this.uidMaps, v.Uid)

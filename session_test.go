@@ -113,7 +113,7 @@ func TestSessionRecycle(t *testing.T) {
 	closeFunc := func(s *Session) {
 		fmt.Println(s.Uid, "Session Recycled")
 	}
-	sm.StartRecycleRoutine(closeFunc)
+	sm.StartRecycleRoutine(time.Second, time.Second * 2, closeFunc)
 	time.Sleep(3 * time.Second)
 	if sm.GetSessionCount() != 0 {
 		t.Fatal("error")
@@ -125,7 +125,7 @@ func TestSessionRecycle(t *testing.T) {
 	time.Sleep(time.Second)
 	sm.StopRecycleRoutine()
 	time.Sleep(time.Second)
-	sm.RecycleNow(closeFunc)
+	sm.RecycleNow(time.Second * 2, closeFunc)
 	if sm.GetSessionCount() != 0 {
 		t.Fatal("error")
 	}
