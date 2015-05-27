@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	sm   *SessionManager = NewSessionManager(time.Second, time.Second*2)
+	sm   *SessionManager = NewSessionManager()
 	uids                 = []string{"1", "2", "3", "4", "5"}
 )
 
@@ -110,10 +110,13 @@ func TestSessionsLoadFromFile(t *testing.T) {
 }
 
 func TestSessionRecycle(t *testing.T) {
+	checkFunc := func(s *Session) {
+		fmt.Println(s.Uid, "Session Check")
+	}
 	closeFunc := func(s *Session) {
 		fmt.Println(s.Uid, "Session Recycled")
 	}
-	sm.StartRecycleRoutine(time.Second, time.Second * 2, closeFunc)
+	sm.StartRecycleRoutine(time.Second, time.Second*2, checkFunc, closeFunc)
 	time.Sleep(3 * time.Second)
 	if sm.GetSessionCount() != 0 {
 		t.Fatal("error")
@@ -125,7 +128,7 @@ func TestSessionRecycle(t *testing.T) {
 	time.Sleep(time.Second)
 	sm.StopRecycleRoutine()
 	time.Sleep(time.Second)
-	sm.RecycleNow(time.Second * 2, closeFunc)
+	sm.RecycleNow(time.Second*2, closeFunc)
 	if sm.GetSessionCount() != 0 {
 		t.Fatal("error")
 	}

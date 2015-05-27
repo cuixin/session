@@ -5,12 +5,13 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
-	msgpack "gopkg.in/vmihailenco/msgpack.v2"
 	"io"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	msgpack "gopkg.in/vmihailenco/msgpack.v2"
 )
 
 const (
@@ -39,7 +40,7 @@ func NewSessionManager() *SessionManager {
 }
 
 type SessionManager struct {
-	mu      sync.Mutex
+	mu        sync.Mutex
 	closeChan chan struct{} `msgpack:"-"`
 	closeWait chan struct{} `msgpack:"-"`
 	closeFlag int32
@@ -202,7 +203,7 @@ func (this *SessionManager) LoadFromFile(filePath string) (int, error) {
 }
 
 // 开启回收Session的Goroutine
-func (this *SessionManager) StartRecycleRoutine(period, timeout time.Duration, handle func(*Session)) {
+func (this *SessionManager) StartRecycleRoutine(period, timeout time.Duration, doSessionCheck, doSessionClose func(*Session)) {
 	if atomic.LoadInt32(&this.closeFlag) == 0 {
 		go func() {
 		lout:
@@ -215,7 +216,9 @@ func (this *SessionManager) StartRecycleRoutine(period, timeout time.Duration, h
 						if time.Now().After(v.LastPacketTime.Add(timeout)) {
 							delete(this.sidMaps, v.Sid)
 							delete(this.uidMaps, v.Uid)
-							go handle(v)
+							go doSessionClose(v)
+						} else {
+							go doSessionCheck(v)
 						}
 					}
 					this.mu.Unlock()
@@ -242,7 +245,7 @@ func (this *SessionManager) StopRecycleRoutine() {
 }
 
 // 立即检查是否可以回收Session
-func (this *SessionManager) RecycleNow(timeout time.Duration, handle func(*Session)) {
+func (this *SessionManager) RecycleNow(timeout time.Duration, doSessionClose func(*Session)) {
 	fmt.Println("Routine Recycle imediately")
 	this.mu.Lock()
 	now := time.Now()
@@ -252,7 +255,7 @@ func (this *SessionManager) RecycleNow(timeout time.Duration, handle func(*Sessi
 			// fmt.Println(v.Uid, "Expired")
 			delete(this.sidMaps, v.Sid)
 			delete(this.uidMaps, v.Uid)
-			handle(v)
+			doSessionClose(v)
 		}
 	}
 	this.mu.Unlock()
