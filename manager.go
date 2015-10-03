@@ -1,11 +1,8 @@
 package session
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -13,19 +10,6 @@ import (
 
 	msgpack "gopkg.in/vmihailenco/msgpack.v2"
 )
-
-const (
-	sessionIdLength = 32 // SessionId的长度
-)
-
-func newSessionId(size int) string {
-	k := make([]byte, size)
-	if _, err := io.ReadFull(rand.Reader, k); err != nil {
-		return ""
-	} else {
-		return base64.StdEncoding.EncodeToString(k)
-	}
-}
 
 // 实现一个双向唯一Sid<->Uid
 func NewSessionManager() *SessionManager {
@@ -50,8 +34,7 @@ type SessionManager struct {
 }
 
 // 创建一个Session，如果存在则返回false，新创建的返回true
-func (this *SessionManager) NewSession(uid, remoteAddr string) (*Session, bool) {
-	sid := newSessionId(sessionIdLength)
+func (this *SessionManager) NewSession(sid, uid, remoteAddr string) (*Session, bool) {
 	if sid == "" {
 		return nil, false
 	}
