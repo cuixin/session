@@ -188,6 +188,9 @@ func (this *SessionManager) LoadFromFile(filePath string) (int, error) {
 
 // 开启回收Session的Goroutine
 func (this *SessionManager) StartRecycleRoutine(period, timeout time.Duration, doSessionCheck, doSessionClose func(*Session)) {
+	if doSessionCheck == nil && doSessionClose == nil {
+		return
+	}
 	if atomic.LoadInt32(&this.closeFlag) == 0 {
 		go func() {
 		lout:
@@ -200,9 +203,13 @@ func (this *SessionManager) StartRecycleRoutine(period, timeout time.Duration, d
 						if time.Now().After(v.LastPacketTime.Add(timeout)) {
 							delete(this.sidMaps, v.Sid)
 							delete(this.uidMaps, v.Uid)
-							go doSessionClose(v)
+							if doSessionClose != nil {
+								go doSessionClose(v)
+							}
 						} else {
-							go doSessionCheck(v)
+							if doSessionCheck != nil {
+								go doSessionCheck(v)
+							}
 						}
 					}
 					this.mu.Unlock()
