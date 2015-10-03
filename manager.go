@@ -45,6 +45,7 @@ func (this *SessionManager) NewSession(sid, uid, remoteAddr string) (*Session, b
 		RemoteAddr:     remoteAddr,
 		ConnectTime:    nowTime,
 		LastPacketTime: nowTime,
+		LastIOTime:     nowTime,
 		PacketCount:    1,
 		DownQueue:      NewSafeQueue(),
 	}
