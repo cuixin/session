@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -8,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	msgpack "gopkg.in/vmihailenco/msgpack.v2"
+	"github.com/cuixin/go/codec"
 )
 
 // 实现一个双向唯一Sid<->Uid
@@ -147,7 +148,7 @@ func (this *SessionManager) DumpToFile(filePath string) error {
 	}
 	defer f.Close()
 
-	bytes, err := msgpack.Marshal(this.sidMaps)
+	bytes, err := msgpackMarshal(this.sidMaps)
 	if err != nil {
 		return err
 	}
@@ -157,6 +158,23 @@ func (this *SessionManager) DumpToFile(filePath string) error {
 	f.Write(bytes)
 
 	return nil
+}
+
+var msgpackHandle = new(codec.MsgpackHandle)
+
+func msgpackMarshal(obj interface{}) ([]byte, error) {
+	buf := make([]byte, 0, 2048)
+	writer := bytes.NewBuffer(buf)
+	var encoder = codec.NewEncoder(writer, msgpackHandle)
+	err := encoder.Encode(obj)
+	return writer.Bytes(), err
+}
+
+func msgpackUnmarshal(data []byte, v interface{}) error {
+	reader := bytes.NewBuffer(data)
+	decoder := codec.NewDecoder(reader, msgpackHandle)
+	err := decoder.Decode(v)
+	return err
 }
 
 //  从本地文件读取Session
@@ -175,7 +193,7 @@ func (this *SessionManager) LoadFromFile(filePath string) (int, error) {
 	this.sidMaps = make(map[string]*Session, 16<<10)
 	this.uidMaps = make(map[string]*Session, 16<<10)
 
-	msgpack.Unmarshal(data, &this.sidMaps)
+	msgpackUnmarshal(data, &this.sidMaps)
 	l1 := len(this.sidMaps)
 	for _, v := range this.sidMaps {
 		v.DownQueue = NewSafeQueue()
