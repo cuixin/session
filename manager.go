@@ -35,7 +35,7 @@ type SessionManager struct {
 }
 
 // 创建一个Session，如果存在则返回false，新创建的返回true
-func (this *SessionManager) NewSession(sid, uid, remoteAddr string) (*Session, bool) {
+func (this *SessionManager) NewSession(sid, uid, remoteAddr string, attachment interface{}) (*Session, bool) {
 	if sid == "" {
 		return nil, false
 	}
@@ -48,6 +48,7 @@ func (this *SessionManager) NewSession(sid, uid, remoteAddr string) (*Session, b
 		LastPacketTime: nowTime,
 		LastIOTime:     nowTime,
 		PacketCount:    1,
+		Attachment:     attachment,
 		DownQueue:      NewSafeQueue(),
 	}
 

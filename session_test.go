@@ -13,7 +13,7 @@ var (
 )
 
 func testSessionLifecycle(uid string, t *testing.T) {
-	s, ok := sm.NewSession("1", uid, "192.168.1.1")
+	s, ok := sm.NewSession("1", uid, "192.168.1.1", 1)
 	if s == nil || !ok {
 		t.Error("Check NewSession error")
 	}
@@ -37,7 +37,7 @@ func testSessionLifecycle(uid string, t *testing.T) {
 		sm.GetSessionByUid(s.Uid) != nil {
 		t.Error("Check Session is existed")
 	}
-	s, ok = sm.NewSession("2", uid, "192.168.1.1")
+	s, ok = sm.NewSession("2", uid, "192.168.1.1", 2)
 	if s == nil || !ok {
 		t.Error("Check NewSession error")
 	}
@@ -59,7 +59,7 @@ func TestSessionLifecycle(t *testing.T) {
 
 func TestSessionsDumpToFile(t *testing.T) {
 	for _, s := range uids {
-		sm.NewSession(s, s, "192.168.1.1")
+		sm.NewSession(s, s, "192.168.1.1", 1)
 	}
 	err := sm.DumpToFile("session.db")
 	if err != nil {
@@ -109,7 +109,7 @@ func TestSessionRecycle(t *testing.T) {
 		t.Fatal("error")
 	}
 	for _, s := range uids {
-		sm.NewSession(s, s, "192.168.1.1")
+		sm.NewSession(s, s, "192.168.1.1", s)
 	}
 	fmt.Println("Stop")
 	time.Sleep(time.Second)
