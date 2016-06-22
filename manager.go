@@ -44,9 +44,9 @@ func (this *SessionManager) NewSession(sid, uid, remoteAddr string, attachment i
 		Sid:            sid,
 		Uid:            uid,
 		RemoteAddr:     remoteAddr,
-		ConnectTime:    nowTime,
-		LastPacketTime: nowTime,
-		LastIOTime:     nowTime,
+		connectTime:    nowTime,
+		lastPacketTime: nowTime,
+		lastIOTime:     nowTime,
 		PacketCount:    1,
 		Attachment:     attachment,
 		DownQueue:      NewSafeQueue(),
@@ -219,7 +219,7 @@ func (this *SessionManager) StartRecycleRoutine(period, timeout time.Duration, d
 					this.mu.Lock()
 					for _, v := range this.sidMaps {
 						// expired
-						if time.Now().After(v.LastPacketTime.Add(timeout)) {
+						if time.Now().After(v.lastPacketTime.Add(timeout)) {
 							delete(this.sidMaps, v.Sid)
 							delete(this.uidMaps, v.Uid)
 							if doSessionClose != nil {
@@ -261,7 +261,7 @@ func (this *SessionManager) RecycleNow(timeout time.Duration, doSessionClose fun
 	now := time.Now()
 	for _, v := range this.sidMaps {
 		// expired
-		if now.After(v.LastPacketTime.Add(timeout)) {
+		if now.After(v.lastPacketTime.Add(timeout)) {
 			// fmt.Println(v.Uid, "Expired")
 			delete(this.sidMaps, v.Sid)
 			delete(this.uidMaps, v.Uid)
